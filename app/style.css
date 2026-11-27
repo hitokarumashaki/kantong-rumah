@@ -1,0 +1,280 @@
+/* style.css — satu tugas: seluruh tampilan Kantong Rumah.
+   Palet hangat rumah tangga: krem, hijau daun, terakota. Tanpa font eksternal,
+   tanpa gambar luar: semua bentuk dari CSS dan SVG. */
+
+:root {
+  --cream: #faf6ef;
+  --card: #fffdf8;
+  --ink: #233026;
+  --muted: #5a6b5e;
+  --line: #e3dac8;
+  --green: #1e6b4f;
+  --green-soft: #e2efe7;
+  --terra: #d96c3f;
+  --terra-soft: #fbe9df;
+  --red: #c04a3a;
+  --red-soft: #fbe7e3;
+  --blue: #3f7fb8;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--cream);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+h1 { font-size: 26px; margin: 0; line-height: 1.2; }
+h2 { font-size: 19px; margin: 0 0 12px; }
+h3 { font-size: 16px; margin: 0; }
+p { margin: 0 0 10px; }
+a { color: var(--green); }
+
+/* ---- header ---- */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 20px 20px 8px;
+  flex-wrap: wrap;
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand p { margin: 0; color: var(--muted); font-size: 14px; }
+.logo {
+  width: 48px; height: 48px;
+  display: grid; place-items: center;
+  background: var(--green); color: #fff;
+  font-weight: 800; font-size: 19px;
+  border-radius: 12px;
+}
+.month-switch { display: flex; align-items: center; gap: 10px; }
+.month-switch span { font-weight: 700; min-width: 150px; text-align: center; }
+.month-switch button {
+  width: 36px; height: 36px;
+  border: 1px solid var(--line); background: var(--card);
+  border-radius: 50%; font-size: 20px; cursor: pointer; color: var(--ink);
+}
+.month-switch button:disabled { opacity: .35; cursor: default; }
+
+/* ---- nav ---- */
+.mainnav {
+  max-width: 1080px;
+  margin: 8px auto 0;
+  padding: 0 20px;
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.mainnav a {
+  text-decoration: none;
+  color: var(--ink);
+  padding: 9px 16px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 15px;
+}
+.mainnav a:hover { background: var(--green-soft); }
+.mainnav a.active { background: var(--green); color: #fff; }
+
+/* ---- layout ---- */
+main { max-width: 1080px; margin: 0 auto; padding: 18px 20px 8px; }
+footer {
+  max-width: 1080px; margin: 0 auto; padding: 10px 20px 28px;
+  color: var(--muted); font-size: 13px;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 18px;
+}
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.grid-2 .card { margin-bottom: 0; }
+.grid-2 { margin-bottom: 18px; }
+.mt { margin-top: 22px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.empty { color: var(--muted); font-style: italic; }
+
+/* ---- stat cards ---- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.stat {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+}
+.stat-label { color: var(--muted); font-size: 14px; margin: 0 0 4px; }
+.stat-value { font-size: 27px; font-weight: 800; margin: 0 0 2px; letter-spacing: -.5px; }
+.stat-sub { color: var(--muted); font-size: 13px; margin: 0; }
+.stat.in .stat-value { color: var(--green); }
+.stat.out .stat-value { color: var(--terra); }
+.stat.save .stat-value { color: var(--green); }
+.stat.over .stat-value { color: var(--red); }
+
+/* ---- lists, donut, legend ---- */
+.rows { list-style: none; margin: 0; padding: 0; }
+.rows li {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.rows li:last-child { border-bottom: 0; }
+.rows i { color: var(--muted); font-style: normal; font-size: 13px; }
+.rows b { white-space: nowrap; }
+.rows .out { color: var(--terra); }
+.card-link { margin: 12px 0 0; font-size: 14px; }
+.donut-wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.legend { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 220px; }
+.legend li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.legend li:last-child { border-bottom: 0; }
+.legend b { margin-left: auto; white-space: nowrap; }
+.legend .pct { color: var(--muted); width: 40px; text-align: right; }
+.dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; flex: none; }
+
+/* ---- bars ---- */
+.bar-track {
+  height: 12px;
+  background: #eee7d6;
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 10px 0 4px;
+}
+.bar-fill { height: 100%; border-radius: 999px; }
+
+/* ---- tables ---- */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .4px; }
+td.num, th.num { text-align: right; white-space: nowrap; }
+td .out { color: var(--terra); }
+td .in { color: var(--green); }
+.chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 13px; font-weight: 600;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 12%, white);
+}
+
+/* ---- forms & buttons ---- */
+.toolbar { display: flex; justify-content: space-between; align-items: end; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.toolbar label { font-size: 14px; color: var(--muted); display: grid; gap: 4px; }
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.form-grid label { display: grid; gap: 5px; font-size: 14px; font-weight: 600; }
+.form-actions { display: flex; align-items: end; }
+input, select {
+  font: inherit;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+  width: 100%;
+}
+input:focus, select:focus { outline: 2px solid var(--green); outline-offset: 1px; }
+.btn {
+  font: inherit; font-weight: 700;
+  padding: 9px 16px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+.btn:hover { background: var(--green-soft); }
+.btn.primary { background: var(--green); border-color: var(--green); color: #fff; }
+.btn.primary:hover { background: #175740; }
+.btn.danger { color: var(--red); }
+.btn.danger:hover { background: var(--red-soft); }
+.btn.small { padding: 6px 12px; font-size: 14px; }
+
+/* ---- anggaran ---- */
+.budget-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+}
+.budget-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+}
+.budget-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.budget-head h3 { display: flex; align-items: center; gap: 8px; }
+.budget-nums { margin: 10px 0 0; font-size: 15px; }
+.over-text { color: var(--red); font-weight: 700; font-size: 14px; }
+.save-text { color: var(--green); font-weight: 700; font-size: 14px; }
+.budget-edit { display: flex; gap: 8px; align-items: end; margin-top: 12px; }
+.budget-edit label { flex: 1; font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
+
+/* ---- tagihan ---- */
+.bill-list { display: grid; gap: 14px; }
+.bill-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--terra);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  display: flex; justify-content: space-between; gap: 14px; align-items: center;
+}
+.bill-card.paid { border-left-color: var(--green); }
+.bill-right { text-align: right; display: grid; gap: 4px; justify-items: end; }
+.bill-amount { font-size: 19px; font-weight: 800; margin: 0; }
+.bill-status { margin: 0; font-size: 14px; font-weight: 700; }
+.bill-card.paid .bill-status { color: var(--green); }
+.bill-card.due .bill-status { color: var(--terra); }
+
+/* ---- laporan ---- */
+.legend-line { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+.sw { width: 16px; height: 12px; border-radius: 3px; display: inline-block; }
+.sw.in { background: var(--green); }
+.sw.out { background: var(--terra); }
+.top-list { margin: 0; padding-left: 20px; }
+.top-list li { padding: 6px 0; }
+.tips { margin: 0; padding-left: 20px; }
+.tips li { padding: 6px 0; }
+
+/* ---- phone ---- */
+@media (max-width: 720px) {
+  body { font-size: 15px; }
+  h1 { font-size: 22px; }
+  .stats { grid-template-columns: 1fr; gap: 12px; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .budget-grid { grid-template-columns: 1fr; }
+  .form-grid { grid-template-columns: 1fr; }
+  .stat-value { font-size: 24px; }
+  .mainnav { flex-wrap: wrap; overflow-x: visible; padding-bottom: 0; }
+  .mainnav a { flex: none; padding: 8px 13px; }
+  .bill-card { flex-direction: column; align-items: stretch; }
+  .bill-right { justify-items: start; text-align: left; }
+  .month-switch span { min-width: 120px; }
+}

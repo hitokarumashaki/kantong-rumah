@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kantong Rumah — Anggaran Keluarga</title>
+<meta name="description" content="Kantong Rumah: anggaran keluarga yang rapi — pemasukan, pengeluaran, anggaran per kategori, tagihan rutin, dan laporan bulanan. Semua tersimpan di browser, tanpa akun dan tanpa internet.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo" aria-hidden="true">KR</span>
+    <div>
+      <h1>Kantong Rumah</h1>
+      <p>Anggaran keluarga, rapi tiap bulan</p>
+    </div>
+  </div>
+  <div class="month-switch" role="group" aria-label="Pilih bulan">
+    <button id="month-prev" type="button" aria-label="Bulan sebelumnya">‹</button>
+    <span id="month-label">November 2026</span>
+    <button id="month-next" type="button" aria-label="Bulan berikutnya">›</button>
+  </div>
+</header>
+<nav class="mainnav" aria-label="Navigasi utama">
+  <a href="#/" data-nav="dashboard">Dashboard</a>
+  <a href="#/transaksi" data-nav="transaksi">Transaksi</a>
+  <a href="#/anggaran" data-nav="anggaran">Anggaran</a>
+  <a href="#/tagihan" data-nav="tagihan">Tagihan</a>
+  <a href="#/laporan" data-nav="laporan">Laporan</a>
+</nav>
+<main id="view" aria-live="polite"></main>
+<footer>
+  <p>Kantong Rumah — dibuat untuk keluarga Indonesia. Data tersimpan di browser Anda (localStorage); tidak ada akun, tidak ada server, tidak ada iklan.</p>
+</footer>
+<script type="module" src="main.js"></script>
+</body>
+</html>
