@@ -1,64 +1,63 @@
-// charts.js — satu tugas: menggambar grafik SVG murni (tanpa library, tanpa network).
-// Semua fungsi mengembalikan string SVG yang siap disisipkan ke halaman.
+// charts.js — pure SVG charts for Kantong Rumah. No libraries, no network.
+// Every chart is a string of SVG returned to the views.
 
 import { rupiahShort } from './format.js';
 
-// Donat pengeluaran per kategori. parts: [{label, value, color}].
-export function donutChart(parts, size = 180) {
-  const total = parts.reduce((s, p) => s + p.value, 0) || 1;
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Donut of spending by category. `parts` is [{label, value, color}].
+export function donutChart(parts, total, size = 190) {
   const cx = size / 2;
   const cy = size / 2;
-  const r = size / 2 - 12;
-  const hole = r - 26;
+  const r = size / 2 - 14;
+  const stroke = 26;
+  const circ = 2 * Math.PI * r;
   let offset = 0;
-  const slices = parts
-    .filter((p) => p.value > 0)
-    .map((p) => {
-      const frac = p.value / total;
-      const a0 = offset * Math.PI * 2 - Math.PI / 2;
-      const a1 = (offset + frac) * Math.PI * 2 - Math.PI / 2;
-      offset += frac;
-      const large = frac > 0.5 ? 1 : 0;
-      const x0 = cx + r * Math.cos(a0);
-      const y0 = cy + r * Math.sin(a0);
-      const x1 = cx + r * Math.cos(a1);
-      const y1 = cy + r * Math.sin(a1);
-      const xi1 = cx + hole * Math.cos(a1);
-      const yi1 = cy + hole * Math.sin(a1);
-      const xi0 = cx + hole * Math.cos(a0);
-      const yi0 = cy + hole * Math.sin(a0);
-      return `<path d="M ${x0.toFixed(1)} ${y0.toFixed(1)} A ${r} ${r} 0 ${large} 1 ${x1.toFixed(1)} ${y1.toFixed(1)} L ${xi1.toFixed(1)} ${yi1.toFixed(1)} A ${hole} ${hole} 0 ${large} 0 ${xi0.toFixed(1)} ${yi0.toFixed(1)} Z" fill="${p.color}"><title>${p.label}: ${p.value.toLocaleString('id-ID')}</title></path>`;
-    })
-    .join('');
-  return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="Donat pengeluaran per kategori">${slices}<text x="${cx}" y="${cy - 4}" text-anchor="middle" font-size="15" font-weight="700" fill="#233026">Total</text><text x="${cx}" y="${cy + 16}" text-anchor="middle" font-size="12" fill="#5a6b5e">${rupiahShort(total)}</text></svg>`;
+  let arcs = '';
+  for (const p of parts) {
+    if (!p.value || p.value <= 0) continue;
+    const frac = p.value / total;
+    const len = Math.max(frac * circ - 2, 0);
+    arcs += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${p.color}" stroke-width="${stroke}" stroke-dasharray="${len.toFixed(1)} ${circ.toFixed(1)}" stroke-dashoffset="${(-offset).toFixed(1)}" />`;
+    offset += frac * circ;
+  }
+  const inner = `<text x="${cx}" y="${cy - 4}" text-anchor="middle" class="donut-total">${rupiahShort(total)}</text>`
+    + `<text x="${cx}" y="${cy + 16}" text-anchor="middle" class="donut-label">belanja bulan ini</text>`;
+  return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="Donat belanja per kategori">`
+    + `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#eee5d3" stroke-width="${stroke}" />`
+    + arcs + inner + `</svg>`;
 }
 
-// Batang bulanan: pemasukan vs pengeluaran. rows: [{label, income, spent}].
-export function monthlyBars(rows, width = 640, height = 260) {
-  const max = Math.max(...rows.map((r) => Math.max(r.income, r.spent)), 1);
+// Grouped monthly bars: income (green) vs spending (terracotta) for 6 months.
+export function monthlyBars(rows, width = 640, height = 220) {
   const padL = 8;
   const padB = 26;
-  const padT = 18;
-  const plotH = height - padB - padT;
-  const slot = (width - padL * 2) / rows.length;
+  const padT = 12;
+  const max = Math.max(...rows.map((r) => Math.max(r.income, r.spent)), 1);
+  const n = rows.length;
+  const slot = (width - padL * 2) / n;
   const barW = Math.min(26, slot / 3);
-  const bars = rows
-    .map((r, i) => {
-      const x = padL + i * slot + slot / 2;
-      const hIn = (r.income / max) * plotH;
-      const hSp = (r.spent / max) * plotH;
-      return `<rect x="${(x - barW - 3).toFixed(1)}" y="${(padT + plotH - hIn).toFixed(1)}" width="${barW}" height="${hIn.toFixed(1)}" rx="3" fill="#1e6b4f"><title>${r.label} pemasukan ${r.income.toLocaleString('id-ID')}</title></rect>` +
-        `<rect x="${(x + 3).toFixed(1)}" y="${(padT + plotH - hSp).toFixed(1)}" width="${barW}" height="${hSp.toFixed(1)}" rx="3" fill="#d96c3f"><title>${r.label} pengeluaran ${r.spent.toLocaleString('id-ID')}</title></rect>` +
-        `<text x="${x.toFixed(1)}" y="${height - 8}" text-anchor="middle" font-size="12" fill="#5a6b5e">${r.label}</text>`;
-    })
-    .join('');
-  return `<svg viewBox="0 0 ${width} ${height}" width="100%" role="img" aria-label="Grafik pemasukan dan pengeluaran 6 bulan">${bars}<line x1="${padL}" y1="${padT + plotH}" x2="${width - padL}" y2="${padT + plotH}" stroke="#d8cfc0" stroke-width="1"/></svg>`;
+  let out = `<svg viewBox="0 0 ${width} ${height}" width="100%" role="img" aria-label="Grafik pemasukan dan pengeluaran 6 bulan">`;
+  rows.forEach((r, i) => {
+    const x = padL + slot * i + slot / 2;
+    const hIn = ((height - padB - padT) * r.income) / max;
+    const hOut = ((height - padB - padT) * r.spent) / max;
+    const yBase = height - padB;
+    out += `<rect x="${(x - barW - 3).toFixed(1)}" y="${(yBase - hIn).toFixed(1)}" width="${barW}" height="${hIn.toFixed(1)}" rx="3" fill="#1f5c46" />`;
+    out += `<rect x="${(x + 3).toFixed(1)}" y="${(yBase - hOut).toFixed(1)}" width="${barW}" height="${hOut.toFixed(1)}" rx="3" fill="#c96a3b" />`;
+    out += `<text x="${x.toFixed(1)}" y="${height - 8}" text-anchor="middle" class="bar-label">${esc(r.short)}</text>`;
+  });
+  out += `</svg>`;
+  return out;
 }
 
-// Batang horizontal sederhana untuk satu nilai terhadap batas (anggaran).
+// A single horizontal budget bar: spent portion of the budget, coloured by
+// how close it is to the limit (green under 80%, amber 80–100%, red over).
 export function budgetBar(spent, budget) {
-  const pct = budget ? Math.min(100, (spent / budget) * 100) : 0;
-  const over = spent > budget;
-  const color = over ? '#c04a3a' : pct > 85 ? '#d96c3f' : '#1e6b4f';
-  return `<div class="bar-track"><div class="bar-fill" style="width:${pct.toFixed(1)}%;background:${color}"></div></div>`;
+  const ratio = budget > 0 ? spent / budget : 0;
+  const width = Math.max(0, Math.min(100, ratio * 100));
+  const color = ratio > 1 ? '#b3372f' : ratio >= 0.8 ? '#c07f1a' : '#1f5c46';
+  return `<div class="bar-track"><div class="bar-fill" style="width:${width.toFixed(0)}%;background:${color}"></div></div>`;
 }

@@ -1,123 +1,126 @@
-// main.js — satu tugas: merangkai aplikasi: router hash, pemuatan state,
-// dan semua aksi pengguna (tambah/hapus transaksi, ubah anggaran, tandai tagihan,
-// ganti bulan, filter). Render ulang halaman setiap state berubah.
+// main.js — router, state, and wiring for Kantong Rumah.
+// Hash routes: #/ Dashboard, #/transaksi, #/anggaran, #/tagihan, #/laporan.
+// State lives in localStorage so edits survive a reload.
 
-import { loadStore, saveStore } from './data.js';
-import { namaBulan } from './format.js';
-import { renderDashboard, renderTransactions, renderBudgets, renderBills, renderReport } from './views.js';
+import { seedState, MONTHS } from './data.js';
+import { monthLabel } from './format.js';
+import { renderView, monthTotals } from './views.js';
 
-const view = document.getElementById('view');
-const monthLabel = document.getElementById('month-label');
-const prevBtn = document.getElementById('month-prev');
-const nextBtn = document.getElementById('month-next');
-const navLinks = [...document.querySelectorAll('[data-nav]')];
-
-const state = loadStore();
-let filterCat = 'Semua';
-
+const STORE_KEY = 'kantong-rumah-data-v1';
 const ROUTES = {
-  '': renderDashboard,
-  transaksi: (s) => renderTransactions(s, filterCat),
-  anggaran: renderBudgets,
-  tagihan: renderBills,
-  laporan: renderReport,
+  '': 'dashboard',
+  'transaksi': 'transaksi',
+  'anggaran': 'anggaran',
+  'tagihan': 'tagihan',
+  'laporan': 'laporan',
 };
 
-function route() {
-  const hash = location.hash.replace(/^#\/?/, '');
-  const name = hash.split('/')[0] || '';
-  const render = ROUTES[name] || ROUTES[''];
-  view.innerHTML = render(state);
-  for (const a of navLinks) a.classList.toggle('active', (a.dataset.nav === 'dashboard' && name === '') || a.dataset.nav === name);
-  monthLabel.textContent = namaBulan(state.month);
-  const idx = state.months.indexOf(state.month);
-  prevBtn.disabled = idx <= 0;
-  nextBtn.disabled = idx >= state.months.length - 1;
-  wireView();
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.transactions) && parsed.month) return parsed;
+    }
+  } catch (e) { /* corrupted store: fall through to seed */ }
+  return seedState();
 }
 
-function rerender() {
-  saveStore(state);
-  route();
+function saveState(state) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* storage full or blocked */ }
 }
 
-function wireView() {
-  const addForm = document.getElementById('add-tx');
-  if (addForm) {
-    addForm.addEventListener('submit', (ev) => {
-      ev.preventDefault();
-      const fd = new FormData(addForm);
-      const amount = Math.round(Number(fd.get('amount')));
-      const label = String(fd.get('label')).trim();
-      if (!label || !amount || amount <= 0) return;
-      const rec = {
-        id: 't' + Date.now().toString(36),
-        date: String(fd.get('date')),
-        label,
-        category: String(fd.get('category')),
-        amount,
-      };
-      const m = rec.date.slice(0, 7);
-      if (fd.get('kind') === 'in') {
-        if (!state.income[m]) state.income[m] = [];
-        state.income[m].push(rec);
-      } else {
-        if (!state.transactions[m]) state.transactions[m] = [];
-        if (!state.months.includes(m)) state.months.push(m);
-        state.transactions[m].push(rec);
-      }
-      state.month = m;
-      rerender();
-    });
-  }
-  const filter = document.getElementById('filter-cat');
-  if (filter) {
-    filter.addEventListener('change', () => {
-      filterCat = filter.value;
-      route();
-    });
-  }
-  for (const f of view.querySelectorAll('.budget-edit')) {
-    f.addEventListener('submit', (ev) => {
-      ev.preventDefault();
-      const cat = f.dataset.category;
-      const v = Math.round(Number(new FormData(f).get('budget')));
-      if (Number.isFinite(v) && v >= 0) state.budgets[cat] = v;
-      rerender();
-    });
-  }
+const state = loadState();
+const ui = { txKind: 'all', txCat: 'all' };
+
+const app = document.getElementById('app');
+const monthLabelEl = document.getElementById('month-label');
+
+function currentRoute() {
+  const hash = location.hash.replace(/^#\/?/, '').split('/')[0];
+  return ROUTES[hash] || 'dashboard';
 }
 
-view.addEventListener('click', (ev) => {
-  const btn = ev.target.closest('[data-action]');
-  if (!btn) return;
-  const action = btn.dataset.action;
+function render() {
+  const route = currentRoute();
+  document.querySelectorAll('.nav a').forEach((a) => {
+    a.classList.toggle('active', a.getAttribute('href') === '#/' + (route === 'dashboard' ? '' : route));
+  });
+  monthLabelEl.textContent = monthLabel(state.month);
+  document.getElementById('month-prev').disabled = state.month <= MONTHS[0];
+  document.getElementById('month-next').disabled = state.month >= MONTHS[MONTHS.length - 1];
+  app.innerHTML = renderView(route, state, ui);
+}
+
+function switchMonth(dir) {
+  const i = MONTHS.indexOf(state.month);
+  const next = MONTHS[i + dir];
+  if (!next) return;
+  state.month = next;
+  saveState(state);
+  render();
+}
+
+function addTransaction(form) {
+  const date = form.querySelector('#f-date').value;
+  const kind = form.querySelector('#f-kind').value;
+  const category = kind === 'out' ? form.querySelector('#f-cat').value : null;
+  const label = form.querySelector('#f-label').value.trim();
+  const amount = Math.round(Number(form.querySelector('#f-amount').value));
+  if (!date || !label || !amount || amount <= 0) return;
+  const id = 'u' + Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36);
+  state.transactions.push({ id, date, kind, category, label, amount });
+  if (!date.startsWith(state.month)) state.month = date.slice(0, 7);
+  saveState(state);
+  render();
+}
+
+document.addEventListener('click', (ev) => {
+  const el = ev.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.getAttribute('data-action');
   if (action === 'delete-tx') {
-    const m = state.month;
-    state.transactions[m] = (state.transactions[m] || []).filter((t) => t.id !== btn.dataset.id);
-    rerender();
+    state.transactions = state.transactions.filter((t) => t.id !== el.getAttribute('data-id'));
+    saveState(state);
+    render();
   } else if (action === 'toggle-bill') {
-    const bill = state.bills.find((b) => b.id === btn.dataset.id);
-    if (bill) bill.paid = !bill.paid;
-    rerender();
+    const bill = state.bills.find((b) => b.id === el.getAttribute('data-id'));
+    if (bill) { bill.paid = !bill.paid; saveState(state); render(); }
+  } else if (action === 'budget-save') {
+    const cat = el.getAttribute('data-cat');
+    const input = document.querySelector(`[data-budget-input="${cat}"]`);
+    const value = Math.round(Number(input ? input.value : NaN));
+    if (cat && Number.isFinite(value) && value >= 0) {
+      state.budgets[cat] = value;
+      saveState(state);
+      render();
+    }
+  } else if (action === 'month-prev') {
+    switchMonth(-1);
+  } else if (action === 'month-next') {
+    switchMonth(1);
   }
 });
 
-prevBtn.addEventListener('click', () => {
-  const idx = state.months.indexOf(state.month);
-  if (idx > 0) {
-    state.month = state.months[idx - 1];
-    rerender();
+document.addEventListener('change', (ev) => {
+  const el = ev.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.getAttribute('data-action');
+  if (action === 'filter-kind') { ui.txKind = el.value; render(); }
+  if (action === 'filter-cat') { ui.txCat = el.value; render(); }
+});
+
+document.addEventListener('submit', (ev) => {
+  if (ev.target && ev.target.id === 'tx-form') {
+    ev.preventDefault();
+    addTransaction(ev.target);
   }
 });
 
-nextBtn.addEventListener('click', () => {
-  const idx = state.months.indexOf(state.month);
-  if (idx < state.months.length - 1) {
-    state.month = state.months[idx + 1];
-    rerender();
-  }
-});
+window.addEventListener('hashchange', render);
 
-window.addEventListener('hashchange', route);
-route();
+// First paint, and a footer note with the live totals for this month.
+render();
+const totals = monthTotals(state);
+const foot = document.getElementById('foot-note');
+if (foot) foot.textContent = `Bulan ${monthLabel(state.month)}: pemasukan ${totals.income.toLocaleString('id-ID')} · pengeluaran ${totals.spent.toLocaleString('id-ID')} · sisa ${totals.balance.toLocaleString('id-ID')}. Data tersimpan di peramban ini.`;

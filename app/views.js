@@ -1,198 +1,259 @@
-// views.js — satu tugas: merender kelima halaman (Dashboard, Transaksi, Anggaran,
-// Tagihan, Laporan) dari state. Murni fungsi render: mengembalikan string HTML.
+// views.js — the five pages of Kantong Rumah, rendered as HTML strings.
+// main.js mounts the returned HTML and wires the controls by data-action.
 
-import { rupiah, rupiahShort, persen, namaBulan, namaBulanSingkat, tanggalIndo, hariDalamBulan } from './format.js';
-import { CATEGORIES, CATEGORY_COLORS, HISTORY, monthIncome, monthSpent, spentByCategory } from './data.js';
+import { rupiah, rupiahShort, monthLabel, dateLabel, pctUsed } from './format.js';
+import { CATEGORIES, categoryById, HISTORY } from './data.js';
 import { donutChart, monthlyBars, budgetBar } from './charts.js';
 
-export function esc(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+function esc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function statCard(label, value, sub, tone) {
-  return `<div class="stat ${tone || ''}"><p class="stat-label">${label}</p><p class="stat-value">${value}</p><p class="stat-sub">${sub}</p></div>`;
+export function monthTransactions(state) {
+  return state.transactions
+    .filter((t) => t.date.startsWith(state.month))
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.id < b.id ? 1 : -1));
 }
 
-export function renderDashboard(state) {
-  const m = state.month;
-  const income = monthIncome(state, m);
-  const spent = monthSpent(state, m);
-  const left = income - spent;
-  const rate = income ? Math.round(((income - spent) / income) * 100) : 0;
-  const byCat = spentByCategory(state, m);
-  const parts = CATEGORIES.map((c) => ({ label: c, value: byCat[c], color: CATEGORY_COLORS[c] }));
-  const legend = parts
+export function monthTotals(state) {
+  let income = 0;
+  let spent = 0;
+  for (const t of state.transactions) {
+    if (!t.date.startsWith(state.month)) continue;
+    if (t.kind === 'in') income += t.amount;
+    else spent += t.amount;
+  }
+  return { income, spent, balance: income - spent };
+}
+
+export function categorySpent(state) {
+  const map = {};
+  for (const c of CATEGORIES) map[c.id] = 0;
+  for (const t of state.transactions) {
+    if (t.kind !== 'out' || !t.date.startsWith(state.month)) continue;
+    if (t.category && map[t.category] !== undefined) map[t.category] += t.amount;
+  }
+  return map;
+}
+
+function txRow(t) {
+  const cat = t.category ? categoryById(t.category) : null;
+  const sign = t.kind === 'in' ? '+' : '−';
+  const cls = t.kind === 'in' ? 'tx-in' : 'tx-out';
+  const dot = cat ? `<span class="dot" style="background:${cat.color}"></span>` : '<span class="dot" style="background:#1f5c46"></span>';
+  return `<li class="tx-row">
+    ${dot}
+    <div class="tx-main"><strong>${esc(t.label)}</strong><span>${dateLabel(t.date)}${cat ? ' · ' + esc(cat.name) : ''}</span></div>
+    <span class="tx-amount ${cls}">${sign} ${rupiah(t.amount)}</span>
+    <button class="icon-btn" data-action="delete-tx" data-id="${t.id}" title="Hapus transaksi" aria-label="Hapus ${esc(t.label)}">✕</button>
+  </li>`;
+}
+
+// ---------------- Dashboard ----------------
+function renderDashboard(state) {
+  const { income, spent, balance } = monthTotals(state);
+  const saveRate = income > 0 ? Math.round((balance / income) * 100) : 0;
+  const byCat = categorySpent(state);
+  const parts = CATEGORIES.map((c) => ({ label: c.name, value: byCat[c.id], color: c.color }))
     .filter((p) => p.value > 0)
-    .sort((a, b) => b.value - a.value)
-    .map((p) => `<li><span class="dot" style="background:${p.color}"></span>${p.label}<b>${rupiah(p.value)}</b><span class="pct">${persen(p.value, spent)}</span></li>`)
-    .join('');
-  const today = new Date();
-  const isCurrent = m === today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
-  const day = isCurrent ? today.getDate() : hariDalamBulan(m);
-  const monthPct = Math.round((day / hariDalamBulan(m)) * 100);
-  const unpaid = state.bills.filter((b) => !b.paid).sort((a, b) => a.due - b.due);
-  const billsHtml = unpaid.length
-    ? unpaid.map((b) => `<li><span>${esc(b.name)} <i>jatuh tempo tgl ${b.due}</i></span><b>${rupiah(b.amount)}</b></li>`).join('')
-    : '<li class="empty">Semua tagihan bulan ini sudah lunas.</li>';
-  const recent = [...(state.transactions[m] || [])].sort((a, b) => (b.date < a.date ? -1 : 1)).slice(0, 5);
-  const recentHtml = recent.map((t) => `<li><span>${tanggalIndo(t.date)} — ${esc(t.label)}</span><b class="out">−${rupiah(t.amount)}</b></li>`).join('');
-  const biggest = parts.filter((p) => p.value > 0).sort((a, b) => b.value - a.value)[0];
+    .sort((a, b) => b.value - a.value);
+  const totalBudget = CATEGORIES.reduce((s, c) => s + (state.budgets[c.id] || 0), 0);
+  const budgetPct = totalBudget > 0 ? Math.round((spent / totalBudget) * 100) : 0;
+  const recent = monthTransactions(state).slice(0, 5);
+  const legend = parts.slice(0, 5).map((p) => {
+    const pct = spent > 0 ? Math.round((p.value / spent) * 100) : 0;
+    return `<li><span class="dot" style="background:${p.color}"></span>${esc(p.label)}<b>${rupiahShort(p.value)}</b><span class="muted">${pct}%</span></li>`;
+  }).join('');
 
   return `
-  <section class="stats">
-    ${statCard('Pemasukan ' + namaBulan(m), rupiah(income), 'Gaji + usaha sampingan', 'in')}
-    ${statCard('Pengeluaran ' + namaBulan(m), rupiah(spent), biggest ? 'Terbesar: ' + biggest.label + ' ' + rupiahShort(biggest.value) : '', 'out')}
-    ${statCard('Sisa uang', rupiah(left), 'Tingkat tabungan ' + rate + '%', left >= 0 ? 'save' : 'over')}
+  <section class="cards">
+    <article class="stat-card"><span>Pemasukan</span><strong class="green">${rupiah(income)}</strong><em>${monthLabel(state.month)}</em></article>
+    <article class="stat-card"><span>Pengeluaran</span><strong class="terracotta">${rupiah(spent)}</strong><em>${budgetPct}% dari anggaran</em></article>
+    <article class="stat-card highlight"><span>Sisa uang</span><strong>${rupiah(balance)}</strong><em>Tabungan ${saveRate}% dari pemasukan</em></article>
   </section>
   <section class="grid-2">
-    <div class="card">
-      <h2>Pengeluaran per kategori</h2>
-      <div class="donut-wrap">${donutChart(parts)}<ul class="legend">${legend}</ul></div>
-    </div>
-    <div class="card">
-      <h2>Tagihan yang belum dibayar</h2>
-      <ul class="rows">${billsHtml}</ul>
-      <p class="card-link"><a href="#/tagihan">Lihat semua tagihan →</a></p>
-      <h2 class="mt">Transaksi terakhir</h2>
-      <ul class="rows">${recentHtml}</ul>
-      <p class="card-link"><a href="#/transaksi">Lihat semua transaksi →</a></p>
-    </div>
+    <article class="panel">
+      <h2>Belanja per kategori</h2>
+      <div class="donut-wrap">${donutChart(parts, spent)}<ul class="legend">${legend}</ul></div>
+    </article>
+    <article class="panel">
+      <h2>Transaksi terakhir</h2>
+      <ul class="tx-list">${recent.map(txRow).join('')}</ul>
+      <a class="link-more" href="#/transaksi">Lihat semua transaksi →</a>
+    </article>
   </section>
-  <section class="card">
-    <h2>Perjalanan bulan ini</h2>
-    <p class="muted">Hari ke-${day} dari ${hariDalamBulan(m)} hari di ${namaBulan(m)} (${monthPct}% bulan berjalan). Pengeluaran sejauh ini ${rupiah(spent)} dari pemasukan ${rupiah(income)} — sisa ${rupiah(left)} untuk ${hariDalamBulan(m) - day} hari ke depan.</p>
-    ${budgetBar(spent, income)}
-    <p class="muted small">Batang di atas membandingkan pengeluaran dengan pemasukan bulan ini.</p>
+  <section class="panel">
+    <h2>Ringkasan bulan ini</h2>
+    <p class="summary">Keluarga ini memakai <b>${rupiah(spent)}</b> dari anggaran <b>${rupiah(totalBudget)}</b> (${budgetPct}%).
+    Sisa <b>${rupiah(balance)}</b> — cukup untuk ditabung atau dipakai cadangan bulan depan.
+    Kategori terbesar bulan ini: <b>${esc(parts[0] ? parts[0].label : '—')}</b> (${rupiahShort(parts[0] ? parts[0].value : 0)}).</p>
   </section>`;
 }
 
-export function renderTransactions(state, filter) {
-  const m = state.month;
-  const all = [...(state.transactions[m] || [])].sort((a, b) => (b.date < a.date ? -1 : 1));
-  const shown = filter && filter !== 'Semua' ? all.filter((t) => t.category === filter) : all;
-  const options = ['Semua', ...CATEGORIES].map((c) => `<option value="${c}"${c === filter ? ' selected' : ''}>${c}</option>`).join('');
-  const rows = shown.length
-    ? shown.map((t) => `<tr><td>${tanggalIndo(t.date)}</td><td>${esc(t.label)}</td><td><span class="chip" style="--c:${CATEGORY_COLORS[t.category]}">${t.category}</span></td><td class="num out">−${rupiah(t.amount)}</td><td><button class="btn danger small" data-action="delete-tx" data-id="${t.id}">Hapus</button></td></tr>`).join('')
-    : '<tr><td colspan="5" class="empty">Tidak ada transaksi untuk filter ini.</td></tr>';
-  const total = shown.reduce((s, t) => s + t.amount, 0);
-  const incomeRows = (state.income[m] || []).map((r) => `<tr><td>${tanggalIndo(r.date)}</td><td>${esc(r.label)}</td><td><span class="chip" style="--c:#1e6b4f">Pemasukan</span></td><td class="num in">+${rupiah(r.amount)}</td><td></td></tr>`).join('');
+// ---------------- Transaksi ----------------
+function renderTransactions(state, ui) {
+  const all = monthTransactions(state);
+  const filtered = all.filter((t) => {
+    if (ui.txKind !== 'all' && t.kind !== ui.txKind) return false;
+    if (ui.txCat !== 'all' && t.category !== ui.txCat) return false;
+    return true;
+  });
+  const catOptions = CATEGORIES.map((c) => `<option value="${c.id}"${ui.txCat === c.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
+  const formCats = CATEGORIES.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
 
   return `
-  <section class="card">
-    <h2>Transaksi — ${namaBulan(m)}</h2>
-    <div class="toolbar">
-      <label>Filter kategori
-        <select id="filter-cat" data-action="filter-cat">${options}</select>
-      </label>
-      <p class="muted">Menampilkan ${shown.length} transaksi · total ${rupiah(total)}</p>
-    </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Tanggal</th><th>Keterangan</th><th>Kategori</th><th class="num">Jumlah</th><th></th></tr></thead>
-      <tbody>${incomeRows}${rows}</tbody>
-    </table></div>
-  </section>
-  <section class="card">
+  <section class="panel">
     <h2>Tambah transaksi</h2>
-    <form id="add-tx" class="form-grid">
-      <label>Tanggal<input type="date" name="date" value="2026-11-27" required></label>
-      <label>Keterangan<input type="text" name="label" placeholder="cth: Belanja mingguan — pasar" maxlength="80" required></label>
-      <label>Kategori<select name="category">${CATEGORIES.map((c) => `<option>${c}</option>`).join('')}</select></label>
-      <label>Jenis<select name="kind"><option value="out">Pengeluaran</option><option value="in">Pemasukan</option></select></label>
-      <label>Jumlah (Rp)<input type="number" name="amount" min="1000" step="500" placeholder="100000" required></label>
-      <div class="form-actions"><button class="btn primary" type="submit">Simpan transaksi</button></div>
+    <form id="tx-form" class="tx-form">
+      <label>Tanggal<input id="f-date" type="date" value="${state.month}-15" required></label>
+      <label>Jenis<select id="f-kind"><option value="out">Pengeluaran</option><option value="in">Pemasukan</option></select></label>
+      <label>Kategori<select id="f-cat">${formCats}</select></label>
+      <label>Keterangan<input id="f-label" type="text" placeholder="cth: Belanja pasar" maxlength="60" required></label>
+      <label>Jumlah (Rp)<input id="f-amount" type="number" min="1000" step="500" placeholder="50000" required></label>
+      <button class="btn primary" type="submit">Simpan transaksi</button>
     </form>
-    <p class="muted small">Transaksi tersimpan di browser ini (localStorage) dan langsung mengubah total, grafik, dan anggaran.</p>
+    <p class="hint">Transaksi tersimpan di peramban ini (localStorage) dan langsung mengubah total, grafik, dan anggaran.</p>
+  </section>
+  <section class="panel">
+    <h2>Semua transaksi — ${monthLabel(state.month)}</h2>
+    <div class="filters">
+      <label>Jenis <select data-action="filter-kind">
+        <option value="all"${ui.txKind === 'all' ? ' selected' : ''}>Semua</option>
+        <option value="out"${ui.txKind === 'out' ? ' selected' : ''}>Pengeluaran</option>
+        <option value="in"${ui.txKind === 'in' ? ' selected' : ''}>Pemasukan</option>
+      </select></label>
+      <label>Kategori <select data-action="filter-cat">
+        <option value="all"${ui.txCat === 'all' ? ' selected' : ''}>Semua kategori</option>
+        ${catOptions}
+      </select></label>
+      <span class="muted">${filtered.length} dari ${all.length} transaksi</span>
+    </div>
+    <ul class="tx-list">${filtered.length ? filtered.map(txRow).join('') : '<li class="empty">Tidak ada transaksi yang cocok dengan filter.</li>'}</ul>
   </section>`;
 }
 
-export function renderBudgets(state) {
-  const m = state.month;
-  const byCat = spentByCategory(state, m);
-  const cards = CATEGORIES.map((c) => {
-    const b = state.budgets[c];
-    const s = byCat[c];
-    const left = b - s;
-    const status = left < 0 ? `<span class="over-text">Lewat ${rupiah(-left)}</span>` : `<span class="save-text">Sisa ${rupiah(left)}</span>`;
-    return `<div class="budget-card">
-      <div class="budget-head"><h3><span class="dot" style="background:${CATEGORY_COLORS[c]}"></span>${c}</h3>${status}</div>
-      <p class="budget-nums">${rupiah(s)} <span class="muted">dari ${rupiah(b)}</span> · ${persen(s, b)}</p>
-      ${budgetBar(s, b)}
-      <form class="budget-edit" data-category="${c}">
-        <label>Anggaran baru (Rp)<input type="number" name="budget" min="0" step="50000" value="${b}" required></label>
-        <button class="btn small" type="submit">Simpan</button>
-      </form>
-    </div>`;
+// ---------------- Anggaran ----------------
+function renderBudgets(state) {
+  const byCat = categorySpent(state);
+  const totalBudget = CATEGORIES.reduce((s, c) => s + (state.budgets[c.id] || 0), 0);
+  const totalSpent = CATEGORIES.reduce((s, c) => s + byCat[c.id], 0);
+  const rows = CATEGORIES.map((c) => {
+    const spent = byCat[c.id];
+    const budget = state.budgets[c.id] || 0;
+    const pct = pctUsed(spent, budget);
+    const over = spent > budget;
+    return `<li class="budget-row">
+      <span class="dot" style="background:${c.color}"></span>
+      <div class="budget-main">
+        <div class="budget-head"><strong>${esc(c.name)}</strong><span>${rupiah(spent)} dari ${rupiah(budget)} · ${pct}%</span></div>
+        ${budgetBar(spent, budget)}
+        ${over ? '<span class="over">Lewat anggaran ' + rupiah(spent - budget) + '</span>' : ''}
+      </div>
+      <label class="budget-edit">Rp <input type="number" min="0" step="10000" value="${budget}" data-budget-input="${c.id}" aria-label="Anggaran ${esc(c.name)}">
+      <button class="btn small" data-action="budget-save" data-cat="${c.id}">Ubah</button></label>
+    </li>`;
   }).join('');
-  const totalBudget = CATEGORIES.reduce((s, c) => s + state.budgets[c], 0);
-  const totalSpent = monthSpent(state, m);
+
   return `
-  <section class="card">
-    <h2>Anggaran — ${namaBulan(m)}</h2>
-    <p class="muted">Total anggaran ${rupiah(totalBudget)} · terpakai ${rupiah(totalSpent)} (${persen(totalSpent, totalBudget)}). Ubah angka anggaran di tiap kartu lalu tekan Simpan — batang dan sisa langsung berubah.</p>
+  <section class="cards">
+    <article class="stat-card"><span>Total anggaran</span><strong>${rupiah(totalBudget)}</strong><em>${monthLabel(state.month)}</em></article>
+    <article class="stat-card"><span>Sudah dipakai</span><strong class="terracotta">${rupiah(totalSpent)}</strong><em>${pctUsed(totalSpent, totalBudget)}% dari total</em></article>
+    <article class="stat-card"><span>Sisa anggaran</span><strong class="green">${rupiah(totalBudget - totalSpent)}</strong><em>untuk sisa bulan ini</em></article>
   </section>
-  <section class="budget-grid">${cards}</section>`;
+  <section class="panel">
+    <h2>Anggaran per kategori</h2>
+    <p class="hint">Ubah angka anggaran lewat kolom di kanan tiap baris, lalu tekan Ubah. Warna batang berubah saat pemakaian mendekati batas.</p>
+    <ul class="budget-list">${rows}</ul>
+  </section>`;
 }
 
-export function renderBills(state) {
+// ---------------- Tagihan ----------------
+function renderBills(state) {
   const total = state.bills.reduce((s, b) => s + b.amount, 0);
   const paid = state.bills.filter((b) => b.paid).reduce((s, b) => s + b.amount, 0);
   const unpaid = total - paid;
-  const rows = [...state.bills].sort((a, b) => a.due - b.due).map((b) => `
-    <div class="bill-card ${b.paid ? 'paid' : 'due'}">
-      <div><h3>${esc(b.name)}</h3><p class="muted">${esc(b.note)}</p><p class="muted">Jatuh tempo tiap tanggal ${b.due}</p></div>
-      <div class="bill-right"><p class="bill-amount">${rupiah(b.amount)}</p>
-      <p class="bill-status">${b.paid ? '✓ Lunas' : 'Belum dibayar'}</p>
-      <button class="btn small ${b.paid ? '' : 'primary'}" data-action="toggle-bill" data-id="${b.id}">${b.paid ? 'Batalkan lunas' : 'Tandai lunas'}</button></div>
-    </div>`).join('');
+  const rows = [...state.bills].sort((a, b) => a.dueDay - b.dueDay).map((b) => {
+    const status = b.paid
+      ? '<span class="chip ok">Lunas</span>'
+      : '<span class="chip warn">Belum dibayar</span>';
+    return `<li class="bill-row">
+      <div class="bill-main"><strong>${esc(b.name)}</strong><span>Jatuh tempo tanggal ${b.dueDay} · ${monthLabel(state.month)}</span></div>
+      <span class="bill-amount">${rupiah(b.amount)}</span>
+      ${status}
+      <button class="btn small" data-action="toggle-bill" data-id="${b.id}">${b.paid ? 'Batalkan lunas' : 'Tandai lunas'}</button>
+    </li>`;
+  }).join('');
+
   return `
-  <section class="stats">
-    ${statCard('Total tagihan bulan ini', rupiah(total), state.bills.length + ' tagihan rutin', '')}
-    ${statCard('Sudah dibayar', rupiah(paid), persen(paid, total) + ' dari total', 'save')}
-    ${statCard('Belum dibayar', rupiah(unpaid), state.bills.filter((b) => !b.paid).length + ' tagihan menunggu', 'out')}
+  <section class="cards">
+    <article class="stat-card"><span>Total tagihan</span><strong>${rupiah(total)}</strong><em>6 tagihan rutin</em></article>
+    <article class="stat-card"><span>Sudah dibayar</span><strong class="green">${rupiah(paid)}</strong><em>${state.bills.filter((b) => b.paid).length} dari ${state.bills.length} tagihan</em></article>
+    <article class="stat-card"><span>Belum dibayar</span><strong class="terracotta">${rupiah(unpaid)}</strong><em>segera lunasi sebelum jatuh tempo</em></article>
   </section>
-  <section class="bill-list">${rows}</section>
-  <p class="muted small">Tagihan yang ditandai lunas tetap tercatat di sini; menandainya lunas juga mengubah ringkasan di atas.</p>`;
+  <section class="panel">
+    <h2>Tagihan rutin bulan ini</h2>
+    <p class="hint">Tombol "Tandai lunas" mengubah status tagihan dan langsung memperbarui ringkasan di atas.</p>
+    <ul class="bill-list">${rows}</ul>
+  </section>`;
 }
 
-export function renderReport(state) {
-  const rows = [
-    ...HISTORY.map((h) => ({ label: namaBulanSingkat(h.month), income: h.income, spent: h.spent })),
-    ...state.months.map((mm) => ({ label: namaBulanSingkat(mm), income: monthIncome(state, mm), spent: monthSpent(state, mm) })),
-  ];
-  const m = state.month;
-  const byCat = spentByCategory(state, m);
-  const top = CATEGORIES.map((c) => ({ label: c, value: byCat[c] })).sort((a, b) => b.value - a.value).slice(0, 3);
-  const income = monthIncome(state, m);
-  const spent = monthSpent(state, m);
-  const rate = income ? Math.round(((income - spent) / income) * 100) : 0;
-  const topHtml = top.map((t, i) => `<li><b>${i + 1}. ${t.label}</b> — ${rupiah(t.value)} (${persen(t.value, spent)} dari pengeluaran)</li>`).join('');
-  const over = CATEGORIES.filter((c) => byCat[c] > state.budgets[c]);
-  const tips = [
-    `Kategori terbesar bulan ini adalah ${top[0].label} (${rupiah(top[0].value)}). Cek lagi belanja mingguan: selisih Rp 50.000 per minggu saja menghemat Rp 200.000 sebulan.`,
-    over.length ? `Perhatian: ${over.join(', ')} sudah melewati anggaran. Pindahkan sisa dari kategori yang masih longgar sebelum akhir bulan.` : 'Semua kategori masih di dalam anggaran bulan ini — pertahankan sampai akhir bulan.',
-    `Tingkat tabungan ${rate}% berarti Rp ${Math.max(0, income - spent).toLocaleString('id-ID')} bisa masuk tabungan bulan ini.`,
-  ].map((t) => `<li>${t}</li>`).join('');
+// ---------------- Laporan ----------------
+function renderReport(state) {
+  const months = [...HISTORY];
+  for (const ym of ['2026-10', '2026-11']) {
+    const probe = { ...state, month: ym };
+    const { income, spent } = monthTotals(probe);
+    months.push({ month: ym, income, spent });
+  }
+  const short = { '2026-06': 'Jun', '2026-07': 'Jul', '2026-08': 'Agu', '2026-09': 'Sep', '2026-10': 'Okt', '2026-11': 'Nov' };
+  const rows = months.map((m) => ({ ...m, short: short[m.month] || m.month }));
+  const nov = monthTotals({ ...state, month: '2026-11' });
+  const oct = monthTotals({ ...state, month: '2026-10' });
+  const byCatNov = categorySpent({ ...state, month: '2026-11' });
+  const topNov = CATEGORIES.map((c) => ({ name: c.name, spent: byCatNov[c.id] })).sort((a, b) => b.spent - a.spent)[0];
+  const overOct = CATEGORIES.filter((c) => {
+    const spent = categorySpent({ ...state, month: '2026-10' })[c.id];
+    return spent > (state.budgets[c.id] || 0);
+  });
+  const avgSpent = Math.round(rows.reduce((s, r) => s + r.spent, 0) / rows.length);
+  const saveNov = nov.income > 0 ? Math.round(((nov.income - nov.spent) / nov.income) * 100) : 0;
+  const saveOct = oct.income > 0 ? Math.round(((oct.income - oct.spent) / oct.income) * 100) : 0;
+
+  const compare = CATEGORIES.map((c) => {
+    const sOct = categorySpent({ ...state, month: '2026-10' })[c.id];
+    const sNov = byCatNov[c.id];
+    const diff = sNov - sOct;
+    const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '—';
+    const cls = diff > 0 ? 'up' : diff < 0 ? 'down' : '';
+    return `<tr><td><span class="dot" style="background:${c.color}"></span> ${esc(c.name)}</td><td>${rupiah(sOct)}</td><td>${rupiah(sNov)}</td><td class="${cls}">${arrow} ${rupiah(Math.abs(diff))}</td></tr>`;
+  }).join('');
 
   return `
-  <section class="card">
-    <h2>Laporan 6 bulan — Juni sampai ${namaBulan(m)}</h2>
-    <div class="legend-line"><span class="sw in"></span> Pemasukan <span class="sw out"></span> Pengeluaran</div>
-    ${monthlyBars(rows)}
-    <p class="muted small">Jun–Sep 2026: total bulanan dari catatan lama keluarga. Okt–Nov 2026: dihitung dari transaksi yang tercatat di aplikasi.</p>
+  <section class="cards">
+    <article class="stat-card"><span>Rata-rata belanja / bulan</span><strong>${rupiah(avgSpent)}</strong><em>6 bulan terakhir</em></article>
+    <article class="stat-card"><span>Tabungan November</span><strong class="green">${saveNov}%</strong><em>Oktober ${saveOct}% — ${saveNov >= saveOct ? 'membaik' : 'menurun'}</em></article>
+    <article class="stat-card"><span>Kategori terbesar Nov</span><strong>${esc(topNov.name)}</strong><em>${rupiah(topNov.spent)} bulan ini</em></article>
   </section>
-  <section class="grid-2">
-    <div class="card">
-      <h2>3 kategori terbesar — ${namaBulan(m)}</h2>
-      <ol class="top-list">${topHtml}</ol>
-      <p class="muted">Total pengeluaran ${rupiah(spent)} dari pemasukan ${rupiah(income)}.</p>
-    </div>
-    <div class="card">
-      <h2>Yang bisa dihemat</h2>
-      <ul class="tips">${tips}</ul>
-    </div>
+  <section class="panel">
+    <h2>Pemasukan vs pengeluaran — 6 bulan</h2>
+    <div class="chart-legend"><span><i style="background:#1f5c46"></i> Pemasukan</span><span><i style="background:#c96a3b"></i> Pengeluaran</span></div>
+    ${monthlyBars(rows)}
+    <p class="hint">Pengeluaran selalu di bawah pemasukan dalam 6 bulan terakhir — keluarga ini menabung setiap bulan.</p>
+  </section>
+  <section class="panel">
+    <h2>Oktober vs November per kategori</h2>
+    <p class="hint">Oktober: ${overOct.length ? overOct.map((c) => esc(c.name)).join(' dan ') + ' lewat anggaran.' : 'semua kategori dalam anggaran.'} November: semua kategori masih dalam anggaran.</p>
+    <table class="compare"><thead><tr><th>Kategori</th><th>Oktober</th><th>November</th><th>Selisih</th></tr></thead><tbody>${compare}</tbody></table>
   </section>`;
+}
+
+export function renderView(route, state, ui) {
+  switch (route) {
+    case 'transaksi': return renderTransactions(state, ui);
+    case 'anggaran': return renderBudgets(state);
+    case 'tagihan': return renderBills(state);
+    case 'laporan': return renderReport(state);
+    case 'dashboard':
+    default: return renderDashboard(state);
+  }
 }
